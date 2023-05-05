@@ -1,0 +1,66 @@
+latest code for table with all columns 
+
+
+from google.cloud import bigquery
+from google.cloud import storage
+from datetime import datetime
+
+# Set up the BigQuery and Storage clients
+bq_client = bigquery.Client()
+storage_client = storage.Client()
+
+# Define the schema for the new table
+schema = [
+    bigquery.SchemaField("name", "STRING"),
+    bigquery.SchemaField("storage_class", "STRING"),
+    bigquery.SchemaField("location", "STRING"),
+    bigquery.SchemaField("exists", "BOOLEAN"),
+    bigquery.SchemaField("total_object_storage", "INTEGER"),
+    bigquery.SchemaField("total_object_count", "INTEGER"),
+    bigquery.SchemaField("sync_time", "TIMESTAMP"),
+    bigquery.SchemaField("non_current_version_storage", "INTEGER")
+]
+
+# Create the table with the specified schema in the finops dataset
+table_ref = bq_client.dataset("finops").table("my_table")
+table = bigquery.Table(table_ref, schema=schema)
+table = bq_client.create_table(table)
+
+print(f"Table {table.table_id} created in dataset finops.")
+
+# Get a list of GCS buckets
+buckets = storage_client.list_buckets()
+
+# Prepare rows for insertion
+rows = []
+for bucket in buckets:
+    total_object_count = 0
+    total_object_storage = 0
+
+    # Get the total object count and storage for the bucket
+    blobs = storage_client.list_blobs(bucket.name)
+    for blob in blobs:
+        total_object_count += 1
+        total_object_storage += blob.size
+
+    row = {
+        "name": bucket.name,
+        "storage_class": bucket.storage_class,
+        "location": bucket.location,
+        "exists": True,
+        "total_object_storage": total_object_storage,
+        "total_object_count": total_object_count,
+        "sync_time": datetime.now(),
+        "non_current_version_storage": 0
+    }
+    rows.append(row)
+
+# Insert rows into the BigQuery table
+errors = bq_client.insert_rows(table, rows)
+
+if errors == []:
+    print(f"Data inserted successfully into table {table.table_id}.")
+else:
+    print("Encountered errors while inserting data:")
+    for error in errors:
+        print(error)
